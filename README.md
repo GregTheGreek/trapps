@@ -44,7 +44,7 @@ The Makefile signs with your Apple Development / Developer ID certificate if one
 
 ## Releasing
 
-Releases are built by CI (`.github/workflows/release.yml`): bump `CFBundleShortVersionString` in `Support/Info.plist`, then push a matching tag (`git tag v0.2.0 && git push origin v0.2.0`). The workflow builds a universal binary, signs with hardened runtime, notarizes, staples, and attaches the zip to a draft GitHub release.
+Releases are automated with [release-please](https://github.com/googleapis/release-please) (`.github/workflows/release-please.yml`). Conventional commits merged to `main` accumulate into an auto-maintained release PR; merging that PR bumps the version in `Support/Info.plist` (via the `x-release-please-version` markers) and `CHANGELOG.md`, tags `vX.Y.Z`, publishes the GitHub release, and a macOS job builds the universal binary, signs with hardened runtime, notarizes, staples, and attaches the zip.
 
 Required repository secrets:
 
