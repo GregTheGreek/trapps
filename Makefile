@@ -22,24 +22,13 @@ RELEASE_IDENTITY ?= $(shell security find-identity -v -p codesigning 2>/dev/null
 # CI overrides this with explicit --key/--key-id/--issuer flags.
 NOTARY_AUTH ?= --keychain-profile trapps-notary
 
-# This machine's CommandLineTools contains an orphaned modulemap (leftover
-# from an older CLT) that duplicates the SwiftBridging module and breaks all
-# compilation. Mask it with a VFS overlay when present. SwiftPM is similarly
-# broken (mixed llbuild), hence direct swiftc instead of swift build.
-STALE_MODULEMAP = /Library/Developer/CommandLineTools/usr/include/swift/module.modulemap
-OVERLAY         = build/clt-fix-overlay.yaml
-OVERLAY_FLAG    = $(shell [ -f $(STALE_MODULEMAP) ] && echo "-vfsoverlay $(OVERLAY)")
-
 .PHONY: build bundle run release notarize reset-ax clean
 
 build: $(BINARY)
 
-$(OVERLAY): Support/clt-fix-overlay.yaml
+$(BINARY): $(SOURCES)
 	mkdir -p build
-	sed "s|SUPPORT_DIR|$(CURDIR)/Support|" $< > $@
-
-$(BINARY): $(SOURCES) $(OVERLAY)
-	swiftc -O $(OVERLAY_FLAG) $(SOURCES) -o $(BINARY)
+	swiftc -O $(SOURCES) -o $(BINARY)
 
 bundle: build
 	rm -rf $(APP)
@@ -55,11 +44,13 @@ run: bundle
 # Universal binary, hardened runtime, Developer ID signature. `make release`
 # then `make notarize` produces a Gatekeeper-clean zip in build/.
 
-build/trapps-arm64: $(SOURCES) $(OVERLAY)
-	swiftc -O $(OVERLAY_FLAG) -target arm64-$(MACOS_TARGET) $(SOURCES) -o $@
+build/trapps-arm64: $(SOURCES)
+	mkdir -p build
+	swiftc -O -target arm64-$(MACOS_TARGET) $(SOURCES) -o $@
 
-build/trapps-x86_64: $(SOURCES) $(OVERLAY)
-	swiftc -O $(OVERLAY_FLAG) -target x86_64-$(MACOS_TARGET) $(SOURCES) -o $@
+build/trapps-x86_64: $(SOURCES)
+	mkdir -p build
+	swiftc -O -target x86_64-$(MACOS_TARGET) $(SOURCES) -o $@
 
 release: build/trapps-arm64 build/trapps-x86_64
 	@test -n "$(strip $(RELEASE_IDENTITY))" || { \

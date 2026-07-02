@@ -31,10 +31,6 @@ make run        # builds, assembles build/Trapps.app, codesigns, launches
 
 Requires Swift 5.9+ (no Xcode project needed). Always launch via `open build/Trapps.app` (which `make run` does) - running the bare binary directly creates a separate permission identity.
 
-### Toolchain workaround on this machine
-
-The Makefile compiles with `swiftc` directly instead of `swift build`: this machine's CommandLineTools went through a partial update that left SwiftPM with a mixed llbuild (crashes on launch) and an orphaned `/Library/Developer/CommandLineTools/usr/include/swift/module.modulemap` that duplicates the SwiftBridging module and breaks all module compilation. The Makefile masks the orphaned file with a clang VFS overlay (`Support/clt-fix-overlay.yaml`) whenever it exists. The permanent fix is `sudo rm` of that file (it belongs to no package - verify with `pkgutil --file-info`), or a clean CLT reinstall, after which the overlay deactivates automatically and `Package.swift` works again on healthy toolchains.
-
 ## Accessibility permission
 
 On first launch, macOS prompts to grant Trapps Accessibility access (System Settings > Privacy & Security > Accessibility). Until granted, the menu shows a "Grant Accessibility Access…" shortcut. You may need to quit and reopen Trapps after granting.
