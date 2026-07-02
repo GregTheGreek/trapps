@@ -1,0 +1,3 @@
+// Intentionally empty. Masks the orphaned CommandLineTools
+// usr/include/swift/module.modulemap (leftover from an older CLT) which
+// duplicates the SwiftBridging module defined in bridging.modulemap.
