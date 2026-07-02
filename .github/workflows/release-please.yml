@@ -1,24 +1,32 @@
-name: Release
+name: Release Please
 
 on:
   push:
-    tags: ["v*"]
+    branches: [main]
 
 jobs:
-  release:
+  release-please:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      release_created: ${{ steps.rp.outputs.release_created }}
+      tag_name: ${{ steps.rp.outputs.tag_name }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: rp
+
+  build:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
     runs-on: macos-15
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
-
-      - name: Verify tag matches Info.plist version
-        run: |
-          PLIST_VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Support/Info.plist)
-          if [ "v$PLIST_VERSION" != "$GITHUB_REF_NAME" ]; then
-            echo "Tag $GITHUB_REF_NAME does not match Info.plist version $PLIST_VERSION"
-            exit 1
-          fi
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
 
       - name: Import Developer ID certificate
         env:
@@ -47,9 +55,7 @@ jobs:
           make notarize NOTARY_AUTH="--key notary-key.p8 --key-id $NOTARY_KEY_ID --issuer $NOTARY_ISSUER_ID"
           rm notary-key.p8
 
-      - name: Create draft release
+      - name: Attach zip to release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release create "$GITHUB_REF_NAME" build/Trapps-*.zip \
-            --draft --title "$GITHUB_REF_NAME" --generate-notes
+        run: gh release upload "${{ needs.release-please.outputs.tag_name }}" build/Trapps-*.zip
