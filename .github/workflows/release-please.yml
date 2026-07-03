@@ -51,9 +51,9 @@ jobs:
           NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
           NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
         run: |
+          trap 'rm -f notary-key.p8' EXIT
           echo "$NOTARY_KEY" | base64 --decode > notary-key.p8
           make notarize NOTARY_AUTH="--key notary-key.p8 --key-id $NOTARY_KEY_ID --issuer $NOTARY_ISSUER_ID"
-          rm notary-key.p8
 
       - name: Attach zip to release
         env:
