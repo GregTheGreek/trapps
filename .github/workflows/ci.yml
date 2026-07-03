@@ -15,6 +15,12 @@ jobs:
       - name: Build
         run: make build
 
-      # Runs the unit tests once a test target exists; a no-op (exit 0) until then.
+      # Runs the unit tests once a test target exists. `swift test` exits
+      # non-zero when no tests are present, so skip until Tests/ lands.
       - name: Test
-        run: swift test
+        run: |
+          if [ -d Tests ]; then
+            swift test
+          else
+            echo "No Tests/ directory yet - skipping."
+          fi
