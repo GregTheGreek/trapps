@@ -22,10 +22,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         statusItem.autosaveName = Self.autosaveName
         super.init()
 
-        statusItem.button?.image = NSImage(
-            systemSymbolName: "rectangle.topthird.inset.filled",
-            accessibilityDescription: "Trapps"
-        )
+        statusItem.button?.image = Self.menuBarIcon()
 
         let menu = NSMenu()
         menu.delegate = self
@@ -158,6 +155,21 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
         item.isEnabled = false
         return item
+    }
+
+    // The bundled glyph, loaded as a template image so macOS tints it to match
+    // the light/dark menu bar. Loaded explicitly from the bundle (NSImage(named:)
+    // is unreliable for loose resources without an asset catalog); the 54px art
+    // sized to 18pt downscales crisply across 1x/2x/3x displays. Falls back to
+    // an SF Symbol when running the bare, unbundled binary.
+    private static func menuBarIcon() -> NSImage? {
+        if let url = Bundle.main.url(forResource: "trapps-glyph", withExtension: "png"),
+           let glyph = NSImage(contentsOf: url) {
+            glyph.isTemplate = true
+            glyph.size = NSSize(width: 18, height: 18)
+            return glyph
+        }
+        return NSImage(systemSymbolName: "rectangle.topthird.inset.filled", accessibilityDescription: "Trapps")
     }
 
     @objc private func entryClicked(_ sender: NSMenuItem) {
