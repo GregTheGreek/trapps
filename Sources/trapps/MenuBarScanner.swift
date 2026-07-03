@@ -201,7 +201,7 @@ final class MenuBarScanner {
     }
 
     /// Suffixes duplicate titles with (2), (3), ... so multi-item apps stay distinguishable.
-    private func disambiguated(_ entries: [MenuBarEntry]) -> [MenuBarEntry] {
+    func disambiguated(_ entries: [MenuBarEntry]) -> [MenuBarEntry] {
         var counts: [String: Int] = [:]
         return entries.map { entry in
             let seen = counts[entry.title, default: 0] + 1
