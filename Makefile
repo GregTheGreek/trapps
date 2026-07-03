@@ -6,21 +6,18 @@ ZIP     = build/Trapps-$(VERSION).zip
 MACOS_TARGET = apple-macos13.0
 
 # Bundle resources. The .icns is generated from the 1024px master; the menu
-# bar glyph ships at 1x/2x/3x and is loaded as a template image at runtime.
+# bar glyph is the 54px art loaded as a template image and sized to 18pt at
+# runtime (crisp across 1x/2x/3x, so a single high-res file suffices).
 ICON_SRC = Assets/png/traps-app-icon-1024.png
 ICONSET  = build/AppIcon.iconset
-GLYPH_1X = Assets/png/traps-glyph-black-18.png
-GLYPH_2X = Assets/png/traps-glyph-black-36.png
-GLYPH_3X = Assets/png/traps-glyph-black-54.png
+GLYPH    = Assets/png/traps-glyph-black-54.png
 
 # Stage icon + glyph into an assembled bundle. Must run before codesign, which
 # seals the bundle. Referenced as $(STAGE_RESOURCES) from bundle and release.
 define STAGE_RESOURCES
 	mkdir -p $(APP)/Contents/Resources
 	cp build/AppIcon.icns $(APP)/Contents/Resources/AppIcon.icns
-	cp $(GLYPH_1X) $(APP)/Contents/Resources/trapps-glyph.png
-	cp $(GLYPH_2X) $(APP)/Contents/Resources/trapps-glyph@2x.png
-	cp $(GLYPH_3X) $(APP)/Contents/Resources/trapps-glyph@3x.png
+	cp $(GLYPH) $(APP)/Contents/Resources/trapps-glyph.png
 endef
 
 # Prefer a real signing identity so the Accessibility grant survives rebuilds;

@@ -158,12 +158,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     // The bundled glyph, loaded as a template image so macOS tints it to match
-    // the light/dark menu bar. Falls back to an SF Symbol if the resource is
-    // missing (e.g. running the bare binary instead of the assembled bundle).
+    // the light/dark menu bar. Loaded explicitly from the bundle (NSImage(named:)
+    // is unreliable for loose resources without an asset catalog); the 54px art
+    // sized to 18pt downscales crisply across 1x/2x/3x displays. Falls back to
+    // an SF Symbol when running the bare, unbundled binary.
     private static func menuBarIcon() -> NSImage? {
-        let glyph = NSImage(named: "trapps-glyph")
-            ?? Bundle.main.url(forResource: "trapps-glyph", withExtension: "png").flatMap(NSImage.init(contentsOf:))
-        if let glyph {
+        if let url = Bundle.main.url(forResource: "trapps-glyph", withExtension: "png"),
+           let glyph = NSImage(contentsOf: url) {
             glyph.isTemplate = true
             glyph.size = NSSize(width: 18, height: 18)
             return glyph

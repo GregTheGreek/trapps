@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="Assets/png/traps-mark-color-512.png" alt="Trapps" width="128" height="128">
+</p>
+
 # Trapps
 
 A single macOS menu bar icon that reveals every menu bar item ("tray app") from all running apps - including the ones hidden behind the MacBook notch - and lets you activate any of them from a native dropdown.
