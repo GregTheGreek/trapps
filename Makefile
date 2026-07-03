@@ -5,6 +5,24 @@ VERSION = $(shell /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString'
 ZIP     = build/Trapps-$(VERSION).zip
 MACOS_TARGET = apple-macos13.0
 
+# Bundle resources. The .icns is generated from the 1024px master; the menu
+# bar glyph ships at 1x/2x/3x and is loaded as a template image at runtime.
+ICON_SRC = Assets/png/traps-app-icon-1024.png
+ICONSET  = build/AppIcon.iconset
+GLYPH_1X = Assets/png/traps-glyph-black-18.png
+GLYPH_2X = Assets/png/traps-glyph-black-36.png
+GLYPH_3X = Assets/png/traps-glyph-black-54.png
+
+# Stage icon + glyph into an assembled bundle. Must run before codesign, which
+# seals the bundle. Referenced as $(STAGE_RESOURCES) from bundle and release.
+define STAGE_RESOURCES
+	mkdir -p $(APP)/Contents/Resources
+	cp build/AppIcon.icns $(APP)/Contents/Resources/AppIcon.icns
+	cp $(GLYPH_1X) $(APP)/Contents/Resources/trapps-glyph.png
+	cp $(GLYPH_2X) $(APP)/Contents/Resources/trapps-glyph@2x.png
+	cp $(GLYPH_3X) $(APP)/Contents/Resources/trapps-glyph@3x.png
+endef
+
 # Prefer a real signing identity so the Accessibility grant survives rebuilds;
 # fall back to ad-hoc. Override with: make IDENTITY="Apple Development: ..."
 IDENTITY ?= $(shell security find-identity -v -p codesigning 2>/dev/null \
@@ -30,11 +48,28 @@ $(BINARY): $(SOURCES)
 	mkdir -p build
 	swiftc -O $(SOURCES) -o $(BINARY)
 
-bundle: build
+# App icon: build a full .iconset from the 1024px master and pack it into .icns.
+build/AppIcon.icns: $(ICON_SRC)
+	rm -rf $(ICONSET)
+	mkdir -p $(ICONSET)
+	sips -z 16 16     $(ICON_SRC) --out $(ICONSET)/icon_16x16.png >/dev/null
+	sips -z 32 32     $(ICON_SRC) --out $(ICONSET)/icon_16x16@2x.png >/dev/null
+	sips -z 32 32     $(ICON_SRC) --out $(ICONSET)/icon_32x32.png >/dev/null
+	sips -z 64 64     $(ICON_SRC) --out $(ICONSET)/icon_32x32@2x.png >/dev/null
+	sips -z 128 128   $(ICON_SRC) --out $(ICONSET)/icon_128x128.png >/dev/null
+	sips -z 256 256   $(ICON_SRC) --out $(ICONSET)/icon_128x128@2x.png >/dev/null
+	sips -z 256 256   $(ICON_SRC) --out $(ICONSET)/icon_256x256.png >/dev/null
+	sips -z 512 512   $(ICON_SRC) --out $(ICONSET)/icon_256x256@2x.png >/dev/null
+	sips -z 512 512   $(ICON_SRC) --out $(ICONSET)/icon_512x512.png >/dev/null
+	cp $(ICON_SRC)    $(ICONSET)/icon_512x512@2x.png
+	iconutil -c icns $(ICONSET) -o $@
+
+bundle: build build/AppIcon.icns
 	rm -rf $(APP)
 	mkdir -p $(APP)/Contents/MacOS
 	cp $(BINARY) $(APP)/Contents/MacOS/trapps
 	cp Support/Info.plist $(APP)/Contents/Info.plist
+	$(STAGE_RESOURCES)
 	codesign --force --sign "$(IDENTITY)" $(APP)
 
 run: bundle
@@ -52,7 +87,7 @@ build/trapps-x86_64: $(SOURCES)
 	mkdir -p build
 	swiftc -O -target x86_64-$(MACOS_TARGET) $(SOURCES) -o $@
 
-release: build/trapps-arm64 build/trapps-x86_64
+release: build/trapps-arm64 build/trapps-x86_64 build/AppIcon.icns
 	@test -n "$(strip $(RELEASE_IDENTITY))" || { \
 		echo "error: no 'Developer ID Application' identity in the keychain."; \
 		echo "Notarization requires one (Apple Developer Program membership)."; \
@@ -61,6 +96,7 @@ release: build/trapps-arm64 build/trapps-x86_64
 	mkdir -p $(APP)/Contents/MacOS
 	lipo -create -output $(APP)/Contents/MacOS/trapps build/trapps-arm64 build/trapps-x86_64
 	cp Support/Info.plist $(APP)/Contents/Info.plist
+	$(STAGE_RESOURCES)
 	codesign --force --options runtime --timestamp --sign "$(RELEASE_IDENTITY)" $(APP)
 	ditto -c -k --keepParent $(APP) $(ZIP)
 	@echo "Built $(ZIP); next: make notarize"
