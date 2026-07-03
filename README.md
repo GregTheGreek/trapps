@@ -61,3 +61,7 @@ Not distributable via the Mac App Store: driving other apps' menu bar items thro
 
 - System items (Control Center, Wi-Fi, battery, clock) are intentionally filtered out - they are pinned right of the notch and never hidden.
 - Some Electron tray apps only respond to raw mouse events and ignore the Accessibility press; Trapps falls back to activating the app and beeps if the item could not be triggered.
+
+## License
+
+MIT - see [LICENSE](LICENSE).
