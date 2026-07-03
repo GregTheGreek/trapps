@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      # Compile via the same path release uses (swiftc -O). No signing needed.
+      - name: Build
+        run: make build
+
+      # Runs the unit tests once a test target exists. `swift test` exits
+      # non-zero when no tests are present, so skip until Tests/ lands.
+      - name: Test
+        run: |
+          if [ -d Tests ]; then
+            swift test
+          else
+            echo "No Tests/ directory yet - skipping."
+          fi
