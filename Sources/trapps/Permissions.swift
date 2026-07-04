@@ -1,5 +1,7 @@
 import AppKit
-import ApplicationServices
+// kAXTrustedCheckOptionPrompt is imported as a global `var`, which trips
+// concurrency checking; it is an immutable system constant in practice.
+@preconcurrency import ApplicationServices
 
 enum Permissions {
     static var isTrusted: Bool {
@@ -15,7 +17,7 @@ enum Permissions {
     }
 
     static func openSystemSettings() {
-        let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!
+        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") else { return }
         NSWorkspace.shared.open(url)
     }
 }
