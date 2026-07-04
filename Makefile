@@ -5,6 +5,10 @@ VERSION = $(shell /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString'
 ZIP     = build/Trapps-$(VERSION).zip
 MACOS_TARGET = apple-macos13.0
 
+# -O for release; complete concurrency checking to match the SwiftPM build and
+# catch Sendable/isolation regressions before the Swift 6 language-mode switch.
+SWIFT_FLAGS = -O -strict-concurrency=complete
+
 # Bundle resources. The .icns is generated from the 1024px master; the menu
 # bar glyph is the 54px art loaded as a template image and sized to 18pt at
 # runtime (crisp across 1x/2x/3x, so a single high-res file suffices).
@@ -43,7 +47,7 @@ build: $(BINARY)
 
 $(BINARY): $(SOURCES)
 	mkdir -p build
-	swiftc -O $(SOURCES) -o $(BINARY)
+	swiftc $(SWIFT_FLAGS) $(SOURCES) -o $(BINARY)
 
 # App icon: build a full .iconset from the 1024px master and pack it into .icns.
 build/AppIcon.icns: $(ICON_SRC)
@@ -78,11 +82,11 @@ run: bundle
 
 build/trapps-arm64: $(SOURCES)
 	mkdir -p build
-	swiftc -O -target arm64-$(MACOS_TARGET) $(SOURCES) -o $@
+	swiftc $(SWIFT_FLAGS) -target arm64-$(MACOS_TARGET) $(SOURCES) -o $@
 
 build/trapps-x86_64: $(SOURCES)
 	mkdir -p build
-	swiftc -O -target x86_64-$(MACOS_TARGET) $(SOURCES) -o $@
+	swiftc $(SWIFT_FLAGS) -target x86_64-$(MACOS_TARGET) $(SOURCES) -o $@
 
 release: build/trapps-arm64 build/trapps-x86_64 build/AppIcon.icns
 	@test -n "$(strip $(RELEASE_IDENTITY))" || { \

@@ -8,6 +8,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private let scanner = MenuBarScanner()
     private var isMenuOpen = false
     private var hotKey: HotKey?
+    // Written only during init (main actor) and read only in deinit, which runs
+    // when the last reference is already gone - no concurrent access - so the
+    // main-actor isolation can be safely waived to allow the deinit teardown.
+    private nonisolated(unsafe) var observers: [NSObjectProtocol] = []
 
     private static let autosaveName = "trapps"
     private static let entryToolTip =
@@ -17,6 +21,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         // Pin the item to the right end of the third-party status area
         // (0 pt from the right edge). Written before creation and on every
         // launch, so it snaps back even if it was dragged elsewhere.
+        // NOTE: this is a private, undocumented AppKit key with no public
+        // equivalent; it may silently no-op on a future macOS, in which case
+        // the item simply falls back to its autosaved position.
         UserDefaults.standard.set(0, forKey: "NSStatusItem Preferred Position \(Self.autosaveName)")
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         statusItem.autosaveName = Self.autosaveName
@@ -32,21 +39,31 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let workspaceCenter = NSWorkspace.shared.notificationCenter
         for name in [NSWorkspace.didLaunchApplicationNotification,
                      NSWorkspace.didTerminateApplicationNotification] {
-            workspaceCenter.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+            let token = workspaceCenter.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
                 Task { @MainActor in self?.refreshCache() }
             }
+            observers.append(token)
         }
         refreshCache()
 
         // ⌃⌥Space pops the dropdown; NSMenu's built-in type-to-select and the
         // 1-9 shortcuts take it from there. performClick is a direct call on
-        // our own button, not a synthesized event.
+        // our own button, not a synthesized event. The async hop defers it out
+        // of the Carbon event callback so the menu's nested tracking run loop
+        // doesn't start while we're still inside the handler.
         hotKey = HotKey(
             keyCode: UInt32(kVK_Space),
             carbonModifiers: UInt32(controlKey | optionKey)
         ) { [weak self] in
             DispatchQueue.main.async { self?.statusItem.button?.performClick(nil) }
         }
+    }
+
+    deinit {
+        // Never fires in practice (the controller lives for the whole app
+        // lifetime), but keeps observer teardown correct if that ever changes.
+        let center = NSWorkspace.shared.notificationCenter
+        observers.forEach(center.removeObserver)
     }
 
     private func refreshCache(completion: (() -> Void)? = nil) {
@@ -67,6 +84,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let shown = fingerprint(of: scanner.cachedEntries)
         refreshCache { [weak self] in
             guard let self, self.isMenuOpen else { return }
+            // Don't rebuild the menu out from under an active selection; the
+            // next open picks up the change from the warm cache anyway.
+            guard menu.highlightedItem == nil else { return }
             if self.fingerprint(of: self.scanner.cachedEntries) != shown {
                 self.populate(menu)
             }
@@ -193,12 +213,24 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 try SMAppService.mainApp.register()
             }
         } catch {
-            NSSound.beep()
+            // register() commonly fails when the app isn't in /Applications or
+            // isn't signed. Surface why rather than a silent beep and a
+            // checkbox that quietly refuses to change.
+            let alert = NSAlert()
+            alert.messageText = "Couldn't change Launch at Login"
+            alert.informativeText =
+                "\(error.localizedDescription)\n\nTrapps may need to be moved to your Applications folder first."
+            alert.alertStyle = .warning
+            NSApp.activate(ignoringOtherApps: true)
+            alert.runModal()
         }
     }
 
     @objc private func grantAccess() {
-        Permissions.promptIfNeeded()
+        // The system TCC prompt only appears once (at first launch, via
+        // Permissions.promptIfNeeded); afterwards it silently no-ops. So this
+        // secondary button just deep-links to the Settings pane rather than
+        // firing both and stacking redundant UI.
         Permissions.openSystemSettings()
     }
 

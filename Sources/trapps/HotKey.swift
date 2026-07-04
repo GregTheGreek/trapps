@@ -41,6 +41,7 @@ final class HotKey {
         )
         guard registered == noErr else {
             RemoveEventHandler(handlerRef)
+            handlerRef = nil
             return nil
         }
     }
