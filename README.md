@@ -48,16 +48,18 @@ The Makefile signs with your Apple Development / Developer ID certificate if one
 
 ## Releasing
 
-Releases are automated with [release-please](https://github.com/googleapis/release-please) (`.github/workflows/release-please.yml`). Conventional commits merged to `main` accumulate into an auto-maintained release PR; merging that PR bumps the version in `Support/Info.plist` (via the `x-release-please-version` markers) and `CHANGELOG.md`, tags `vX.Y.Z`, publishes the GitHub release, and a macOS job builds the universal binary, signs with hardened runtime, notarizes, staples, and attaches the zip.
+Versioning is automated with [release-please](https://github.com/googleapis/release-please) (`.github/workflows/release-please.yml`); signing and notarization are done locally so the Developer ID private key never leaves the machine.
 
-Required repository secrets:
+1. Conventional commits merged to `main` accumulate into an auto-maintained release PR. Merging it bumps the version in `Support/Info.plist` (via the `x-release-please-version` markers) and `CHANGELOG.md`, tags `vX.Y.Z`, and publishes the GitHub release (without assets).
+2. Locally, on `main` at that tag, build the signed + notarized zip and attach it:
 
-- `MACOS_CERTIFICATE` - base64 of the Developer ID Application certificate exported as .p12 (`base64 -i cert.p12 | pbcopy`)
-- `MACOS_CERTIFICATE_PWD` - the .p12 export password
-- `NOTARY_KEY` - base64 of an App Store Connect API key (.p8)
-- `NOTARY_KEY_ID` / `NOTARY_ISSUER_ID` - the API key's ID and issuer UUID
+   ```sh
+   git pull
+   make release && make notarize
+   gh release upload "v$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Support/Info.plist)" build/Trapps-*.zip
+   ```
 
-Local equivalent: `make release && make notarize` (needs a Developer ID Application identity in the keychain and a one-time `xcrun notarytool store-credentials trapps-notary ...`).
+Requires a Developer ID Application identity in the keychain and a one-time notarytool profile: `xcrun notarytool store-credentials trapps-notary --key <p8> --key-id <id> --issuer <uuid>`.
 
 Not distributable via the Mac App Store: driving other apps' menu bar items through the Accessibility API is incompatible with the App Store sandbox.
 

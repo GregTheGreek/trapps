@@ -1,5 +1,11 @@
 name: Release Please
 
+# Versioning only: bump the version, update the changelog, tag, and publish the
+# GitHub release. Signing and notarization are done locally (they need the
+# Developer ID private key, which is deliberately kept off GitHub) - after this
+# release is created, run `make release && make notarize` and upload the zip.
+# See the "Releasing" section in README.md.
+
 on:
   push:
     branches: [main]
@@ -10,52 +16,6 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
-    outputs:
-      release_created: ${{ steps.rp.outputs.release_created }}
-      tag_name: ${{ steps.rp.outputs.tag_name }}
     steps:
       - uses: googleapis/release-please-action@v4
         id: rp
-
-  build:
-    needs: release-please
-    if: needs.release-please.outputs.release_created == 'true'
-    runs-on: macos-15
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.release-please.outputs.tag_name }}
-
-      - name: Import Developer ID certificate
-        env:
-          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
-          MACOS_CERTIFICATE_PWD: ${{ secrets.MACOS_CERTIFICATE_PWD }}
-        run: |
-          KEYCHAIN_PWD=$(uuidgen)
-          echo "$MACOS_CERTIFICATE" | base64 --decode > cert.p12
-          security create-keychain -p "$KEYCHAIN_PWD" build.keychain
-          security default-keychain -s build.keychain
-          security unlock-keychain -p "$KEYCHAIN_PWD" build.keychain
-          security import cert.p12 -k build.keychain -P "$MACOS_CERTIFICATE_PWD" -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PWD" build.keychain
-          rm cert.p12
-
-      - name: Build and sign
-        run: make release
-
-      - name: Notarize and staple
-        env:
-          NOTARY_KEY: ${{ secrets.NOTARY_KEY }}
-          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
-          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
-        run: |
-          trap 'rm -f notary-key.p8' EXIT
-          echo "$NOTARY_KEY" | base64 --decode > notary-key.p8
-          make notarize NOTARY_AUTH="--key notary-key.p8 --key-id $NOTARY_KEY_ID --issuer $NOTARY_ISSUER_ID"
-
-      - name: Attach zip to release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release upload "${{ needs.release-please.outputs.tag_name }}" build/Trapps-*.zip
