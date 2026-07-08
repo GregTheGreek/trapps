@@ -1,0 +1,18 @@
+cask "trapps" do
+  version "@@VERSION@@"
+  sha256 "@@SHA256@@"
+
+  url "https://github.com/GregTheGreek/trapps/releases/download/v#{version}/Trapps-#{version}.zip"
+  name "Trapps"
+  desc "Menu bar app revealing every menu bar item, including ones behind the notch"
+  homepage "https://github.com/GregTheGreek/trapps"
+
+  depends_on macos: ">= :ventura" # macOS 13+
+
+  app "Trapps.app"
+
+  zap trash: [
+    "~/Library/Preferences/com.gregthegreek.trapps.plist",
+    "~/Library/Saved Application State/com.gregthegreek.trapps.savedState",
+  ]
+end

@@ -3,6 +3,8 @@ BINARY  = build/trapps
 SOURCES = $(wildcard Sources/trapps/*.swift)
 VERSION = $(shell /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Support/Info.plist)
 ZIP     = build/Trapps-$(VERSION).zip
+CASK_TMPL = packaging/trapps.cask.tmpl
+CASK     = build/trapps.rb
 MACOS_TARGET = apple-macos13.0
 
 # -O for release; complete concurrency checking to match the SwiftPM build and
@@ -41,7 +43,7 @@ RELEASE_IDENTITY ?= $(shell security find-identity -v -p codesigning 2>/dev/null
 # CI overrides this with explicit --key/--key-id/--issuer flags.
 NOTARY_AUTH ?= --keychain-profile trapps-notary
 
-.PHONY: build bundle run release notarize reset-ax clean
+.PHONY: build bundle run release notarize cask reset-ax clean
 
 build: $(BINARY)
 
@@ -107,6 +109,15 @@ notarize:
 	xcrun stapler staple $(APP)
 	ditto -c -k --keepParent $(APP) $(ZIP)
 	@echo "Notarized, stapled, and re-zipped $(ZIP)"
+
+# Render the Homebrew cask from the template, filling in the current version and
+# the sha256 of the built zip. Run after `make release && make notarize`; the
+# resulting build/trapps.rb goes into the homebrew-tap repo. See packaging/README.md.
+cask: $(CASK_TMPL)
+	@test -f $(ZIP) || { echo "error: $(ZIP) not found - run 'make release && make notarize' first."; exit 1; }
+	@sha=$$(shasum -a 256 $(ZIP) | awk '{print $$1}'); \
+	sed -e 's/@@VERSION@@/$(VERSION)/' -e "s/@@SHA256@@/$$sha/" $(CASK_TMPL) > $(CASK); \
+	echo "Rendered $(CASK) (version $(VERSION), sha256 $$sha)"
 
 reset-ax:
 	tccutil reset Accessibility com.gregthegreek.trapps
