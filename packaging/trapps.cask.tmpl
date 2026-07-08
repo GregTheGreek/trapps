@@ -7,7 +7,7 @@ cask "trapps" do
   desc "Menu bar app revealing every menu bar item, including ones behind the notch"
   homepage "https://github.com/GregTheGreek/trapps"
 
-  depends_on macos: ">= :ventura" # macOS 13+
+  depends_on macos: :ventura # macOS 13+ (bare symbol implies >=)
 
   app "Trapps.app"
 
