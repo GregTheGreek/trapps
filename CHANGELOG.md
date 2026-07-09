@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.3.0](https://github.com/GregTheGreek/trapps/compare/v0.2.0...v0.3.0) (2026-07-09)
+
+
+### Features
+
+* stage Homebrew cask and make cask helper ([#11](https://github.com/GregTheGreek/trapps/issues/11)) ([53b23ca](https://github.com/GregTheGreek/trapps/commit/53b23caf71906df4cace7b13e4b1a7aa94f5c5de))
+
+
+### Bug Fixes
+
+* inset app icon into macOS safe-area margin ([#15](https://github.com/GregTheGreek/trapps/issues/15)) ([69dfc7c](https://github.com/GregTheGreek/trapps/commit/69dfc7cd4e8a124e0ec8216bd1d3fbb0c68ed064))
+* use bare macos symbol in cask template ([#14](https://github.com/GregTheGreek/trapps/issues/14)) ([1437d0d](https://github.com/GregTheGreek/trapps/commit/1437d0d758bdf61c51673e10895ca7a576b95048))
+
 ## [0.2.0](https://github.com/GregTheGreek/trapps/compare/v0.1.0...v0.2.0) (2026-07-04)
 
 
