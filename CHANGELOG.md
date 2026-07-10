@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.0](https://github.com/GregTheGreek/trapps/compare/v0.3.0...v0.4.0) (2026-07-10)
+
+
+### Features
+
+* distribute a notarized .dmg instead of a .zip ([#16](https://github.com/GregTheGreek/trapps/issues/16)) ([1bdfc11](https://github.com/GregTheGreek/trapps/commit/1bdfc11816bda3da41b3ff598eb51cb53d6cf3cd))
+* in-app auto-updates via Sparkle ([#17](https://github.com/GregTheGreek/trapps/issues/17)) ([b457170](https://github.com/GregTheGreek/trapps/commit/b4571702da73049fd77544d3613d5c3e6d8ad927))
+
 ## [0.3.0](https://github.com/GregTheGreek/trapps/compare/v0.2.0...v0.3.0) (2026-07-09)
 
 
