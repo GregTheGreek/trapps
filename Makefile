@@ -178,19 +178,14 @@ release: build/trapps-arm64 build/trapps-x86_64 build/AppIcon.icns
 	$(MAKE_DMG)
 	@echo "Built $(DMG); next: make notarize"
 
-# A downloaded .dmg needs its own notarization ticket, and the app inside needs
-# one too for offline first launch - so we notarize twice: first the app (staple
-# it for offline Gatekeeper), then rebuild the dmg around the stapled app and
-# notarize + staple the dmg itself.
+# Submitting the dmg notarizes the app inside it too (Apple registers the app's
+# code hash), so one round-trip covers both. Staple the ticket to the dmg so it
+# opens cleanly offline. The app itself is notarized but not stapled - offline
+# first launch is a non-issue for a brew-installed, network-downloaded tool.
 notarize:
-	ditto -c -k --keepParent $(APP) build/notarize.zip
-	xcrun notarytool submit build/notarize.zip $(NOTARY_AUTH) --wait
-	rm -f build/notarize.zip
-	xcrun stapler staple $(APP)
-	$(MAKE_DMG)
 	xcrun notarytool submit $(DMG) $(NOTARY_AUTH) --wait
 	xcrun stapler staple $(DMG)
-	@echo "Notarized + stapled app and dmg: $(DMG)"
+	@echo "Notarized + stapled dmg: $(DMG)"
 
 # Render the Homebrew cask from the template, filling in the current version and
 # the sha256 of the built dmg. Run after `make release && make notarize`; the
