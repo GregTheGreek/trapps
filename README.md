@@ -24,6 +24,7 @@ Trapps uses the macOS Accessibility API to enumerate each running app's menu bar
 - **Option-click** to open its right-click/context menu via the AXShowMenu accessibility action. Only some apps implement it; trapps beeps when one doesn't.
 - **No simulated input, by design**: trapps never synthesizes mouse or keyboard events and never moves your cursor. Everything goes through Accessibility API calls (inter-process messages to the target app). To physically rearrange icons, hold Cmd and drag them in the menu bar yourself - that's built into macOS.
 - **Launch at Login** toggle in the menu registers via `SMAppService`.
+- **Updates**: the menu has "Check for Updates…" and an "Automatically check for updates" toggle, powered by [Sparkle](https://sparkle-project.org). Updates are EdDSA-signed and downloaded from GitHub Releases.
 - The trapps icon pins itself to the right-most third-party slot on every launch.
 - Reordering visible icons needs no app at all: hold Cmd and drag them directly in the menu bar (built into macOS).
 
@@ -51,15 +52,30 @@ The Makefile signs with your Apple Development / Developer ID certificate if one
 Versioning is automated with [release-please](https://github.com/googleapis/release-please) (`.github/workflows/release-please.yml`); signing and notarization are done locally so the Developer ID private key never leaves the machine.
 
 1. Conventional commits merged to `main` accumulate into an auto-maintained release PR. Merging it bumps the version in `Support/Info.plist` (via the `x-release-please-version` markers) and `CHANGELOG.md`, tags `vX.Y.Z`, and publishes the GitHub release (without assets).
-2. Locally, on `main` at that tag, build the signed + notarized zip and attach it:
+2. Locally, on `main` at that tag, build the signed + notarized zip, attach it, then refresh the Sparkle appcast so existing installs see the update:
 
    ```sh
    git pull
+   V=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Support/Info.plist)
    make release && make notarize
-   gh release upload "v$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Support/Info.plist)" build/Trapps-*.zip
+   gh release upload "v$V" "build/Trapps-$V.zip"
+
+   make appcast                                   # writes build/appcast.xml (signed)
+   gh release upload appcast build/appcast.xml --clobber
    ```
 
 Requires a Developer ID Application identity in the keychain and a one-time notarytool profile: `xcrun notarytool store-credentials trapps-notary --key <p8> --key-id <id> --issuer <uuid>`.
+
+### Auto-updates (Sparkle)
+
+Trapps updates itself via [Sparkle](https://sparkle-project.org). The feed (`appcast.xml`) is parked on a pinned GitHub release tagged `appcast` (a stable URL that is never re-tagged); `SUFeedURL` in `Support/Info.plist` points at it, and each item's enclosure points at that version's own `vX.Y.Z` release. `make appcast` pulls the current feed, appends the new version, and re-signs it.
+
+One-time setup:
+
+- `make sparkle-keys` creates the EdDSA signing key in your login keychain and prints the `SUPublicEDKey`. Paste that value into `Support/Info.plist` (the private half never leaves the keychain). Back it up: losing it means clients on the old key can't verify future updates.
+- Create the pinned feed release once: `gh release create appcast --title "Sparkle appcast" --notes "Update feed" --latest=false`.
+
+Sparkle is vendored on demand: `make sparkle` fetches a pinned, checksum-verified `Sparkle.framework` into gitignored `third_party/` (any compile target pulls it in automatically).
 
 Not distributable via the Mac App Store: driving other apps' menu bar items through the Accessibility API is incompatible with the App Store sandbox.
 

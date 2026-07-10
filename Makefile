@@ -7,9 +7,31 @@ CASK_TMPL = packaging/trapps.cask.tmpl
 CASK     = build/trapps.rb
 MACOS_TARGET = apple-macos13.0
 
+# --- Sparkle auto-update ---
+# Pinned + checksummed so the vendored binary can't drift. `make sparkle` (a
+# prerequisite of every compile) fetches it into gitignored third_party/.
+SPARKLE_VERSION = 2.9.4
+SPARKLE_SHA256  = ce89daf967db1e1893ed3ebd67575ed82d3902563e3191ca92aaec9164fbdef9
+SPARKLE_DIR = third_party/Sparkle
+SPARKLE_FW  = $(SPARKLE_DIR)/Sparkle.framework
+SPARKLE_BIN = $(SPARKLE_DIR)/bin
+SPARKLE_URL = https://github.com/sparkle-project/Sparkle/releases/download/$(SPARKLE_VERSION)/Sparkle-$(SPARKLE_VERSION).tar.xz
+
+# Appcast feed lives on a pinned, never-re-tagged GitHub release; enclosures
+# point at each version's own release. SUFeedURL in Info.plist must match APPCAST_URL.
+APPCAST_TAG = appcast
+APPCAST_URL = https://github.com/GregTheGreek/trapps/releases/download/$(APPCAST_TAG)/appcast.xml
+RELEASE_URL_PREFIX = https://github.com/GregTheGreek/trapps/releases/download/v$(VERSION)/
+
 # -O for release; complete concurrency checking to match the SwiftPM build and
 # catch Sendable/isolation regressions before the Swift 6 language-mode switch.
 SWIFT_FLAGS = -O -strict-concurrency=complete
+
+# Link Sparkle and bake the rpath so the embedded framework resolves at runtime
+# (@rpath/Sparkle.framework -> Contents/Frameworks). `canImport(Sparkle)` in the
+# Swift sources keys off this search path; the SwiftPM/test build omits it.
+SPARKLE_FLAGS = -F $(SPARKLE_DIR) -framework Sparkle \
+	-Xlinker -rpath -Xlinker @executable_path/../Frameworks
 
 # Bundle resources. The .icns is generated from the 1024px master; the menu
 # bar glyph is the 54px art loaded as a template image and sized to 18pt at
@@ -24,6 +46,26 @@ define STAGE_RESOURCES
 	mkdir -p $(APP)/Contents/Resources
 	cp build/AppIcon.icns $(APP)/Contents/Resources/AppIcon.icns
 	cp $(GLYPH) $(APP)/Contents/Resources/trapps-glyph.png
+endef
+
+# Copy the vendored Sparkle.framework into the bundle before signing so the app's
+# seal covers it. ditto preserves the framework's Versions/symlink layout.
+define EMBED_SPARKLE
+	mkdir -p $(APP)/Contents/Frameworks
+	rm -rf $(APP)/Contents/Frameworks/Sparkle.framework
+	ditto $(SPARKLE_FW) $(APP)/Contents/Frameworks/Sparkle.framework
+endef
+
+# Re-sign Sparkle's nested code inside-out with our identity (it ships ad-hoc
+# signed). Must run after EMBED_SPARKLE and before the app is sealed.
+# $(1) = signing identity, $(2) = extra flags (e.g. --options runtime --timestamp).
+define SIGN_SPARKLE
+	fw="$(APP)/Contents/Frameworks/Sparkle.framework/Versions/B"; \
+	codesign --force $(2) --sign "$(1)" "$$fw/XPCServices/Downloader.xpc"; \
+	codesign --force $(2) --sign "$(1)" "$$fw/XPCServices/Installer.xpc"; \
+	codesign --force $(2) --sign "$(1)" "$$fw/Autoupdate"; \
+	codesign --force $(2) --sign "$(1)" "$$fw/Updater.app"; \
+	codesign --force $(2) --sign "$(1)" "$(APP)/Contents/Frameworks/Sparkle.framework"
 endef
 
 # Prefer a real signing identity so the Accessibility grant survives rebuilds;
@@ -43,13 +85,26 @@ RELEASE_IDENTITY ?= $(shell security find-identity -v -p codesigning 2>/dev/null
 # CI overrides this with explicit --key/--key-id/--issuer flags.
 NOTARY_AUTH ?= --keychain-profile trapps-notary
 
-.PHONY: build bundle run release notarize cask reset-ax clean
+.PHONY: build bundle run release notarize cask sparkle sparkle-keys appcast reset-ax clean
 
 build: $(BINARY)
 
-$(BINARY): $(SOURCES)
+# Fetch, verify, and unpack the vendored Sparkle framework + tools on demand.
+sparkle: $(SPARKLE_FW)
+$(SPARKLE_FW):
+	@mkdir -p $(SPARKLE_DIR) build
+	@echo "Fetching Sparkle $(SPARKLE_VERSION)…"
+	@curl -fsSL -o build/sparkle.tar.xz "$(SPARKLE_URL)"
+	@echo "$(SPARKLE_SHA256)  build/sparkle.tar.xz" | shasum -a 256 -c - \
+		|| { echo "error: Sparkle checksum mismatch"; rm -f build/sparkle.tar.xz; exit 1; }
+	@tar -xJf build/sparkle.tar.xz -C $(SPARKLE_DIR) ./Sparkle.framework ./bin
+	@chmod +x $(SPARKLE_BIN)/* 2>/dev/null || true
+	@rm -f build/sparkle.tar.xz
+	@echo "Sparkle $(SPARKLE_VERSION) vendored in $(SPARKLE_DIR)"
+
+$(BINARY): $(SOURCES) $(SPARKLE_FW)
 	mkdir -p build
-	swiftc $(SWIFT_FLAGS) $(SOURCES) -o $(BINARY)
+	swiftc $(SWIFT_FLAGS) $(SPARKLE_FLAGS) $(SOURCES) -o $(BINARY)
 
 # App icon: build a full .iconset from the 1024px master and pack it into .icns.
 build/AppIcon.icns: $(ICON_SRC)
@@ -73,6 +128,8 @@ bundle: build build/AppIcon.icns
 	cp $(BINARY) $(APP)/Contents/MacOS/trapps
 	cp Support/Info.plist $(APP)/Contents/Info.plist
 	$(STAGE_RESOURCES)
+	$(EMBED_SPARKLE)
+	$(call SIGN_SPARKLE,$(IDENTITY),)
 	codesign --force --sign "$(IDENTITY)" $(APP)
 
 run: bundle
@@ -82,13 +139,13 @@ run: bundle
 # Universal binary, hardened runtime, Developer ID signature. `make release`
 # then `make notarize` produces a Gatekeeper-clean zip in build/.
 
-build/trapps-arm64: $(SOURCES)
+build/trapps-arm64: $(SOURCES) $(SPARKLE_FW)
 	mkdir -p build
-	swiftc $(SWIFT_FLAGS) -target arm64-$(MACOS_TARGET) $(SOURCES) -o $@
+	swiftc $(SWIFT_FLAGS) $(SPARKLE_FLAGS) -target arm64-$(MACOS_TARGET) $(SOURCES) -o $@
 
-build/trapps-x86_64: $(SOURCES)
+build/trapps-x86_64: $(SOURCES) $(SPARKLE_FW)
 	mkdir -p build
-	swiftc $(SWIFT_FLAGS) -target x86_64-$(MACOS_TARGET) $(SOURCES) -o $@
+	swiftc $(SWIFT_FLAGS) $(SPARKLE_FLAGS) -target x86_64-$(MACOS_TARGET) $(SOURCES) -o $@
 
 release: build/trapps-arm64 build/trapps-x86_64 build/AppIcon.icns
 	@test -n "$(strip $(RELEASE_IDENTITY))" || { \
@@ -100,6 +157,8 @@ release: build/trapps-arm64 build/trapps-x86_64 build/AppIcon.icns
 	lipo -create -output $(APP)/Contents/MacOS/trapps build/trapps-arm64 build/trapps-x86_64
 	cp Support/Info.plist $(APP)/Contents/Info.plist
 	$(STAGE_RESOURCES)
+	$(EMBED_SPARKLE)
+	$(call SIGN_SPARKLE,$(RELEASE_IDENTITY),--options runtime --timestamp)
 	codesign --force --options runtime --timestamp --sign "$(RELEASE_IDENTITY)" $(APP)
 	ditto -c -k --keepParent $(APP) $(ZIP)
 	@echo "Built $(ZIP); next: make notarize"
@@ -118,6 +177,30 @@ cask: $(CASK_TMPL)
 	@sha=$$(shasum -a 256 $(ZIP) | awk '{print $$1}'); \
 	sed -e 's/@@VERSION@@/$(VERSION)/' -e "s/@@SHA256@@/$$sha/" $(CASK_TMPL) > $(CASK); \
 	echo "Rendered $(CASK) (version $(VERSION), sha256 $$sha)"
+
+# One-time: create (or show) the EdDSA signing key in your login Keychain and
+# print the SUPublicEDKey to paste into Support/Info.plist. Idempotent - re-running
+# reuses the existing key. The private half never leaves the Keychain.
+sparkle-keys: $(SPARKLE_FW)
+	@$(SPARKLE_BIN)/generate_keys
+
+# Regenerate the appcast for the current version. Pulls the existing feed from the
+# pinned '$(APPCAST_TAG)' release, appends this version (enclosure -> this version's
+# release dmg/zip), signs everything with your Keychain EdDSA key, and writes
+# build/appcast.xml. Run after `make release && make notarize`, then publish with:
+#   gh release upload $(APPCAST_TAG) build/appcast.xml --clobber
+appcast: $(SPARKLE_FW)
+	@test -f $(ZIP) || { echo "error: $(ZIP) not found - run 'make release && make notarize' first."; exit 1; }
+	@rm -rf build/appcast && mkdir -p build/appcast
+	@cp $(ZIP) build/appcast/
+	@curl -fsSL -o build/appcast/appcast.xml "$(APPCAST_URL)" \
+		&& echo "merged existing feed" || echo "no existing feed - starting fresh"
+	$(SPARKLE_BIN)/generate_appcast \
+		--download-url-prefix "$(RELEASE_URL_PREFIX)" \
+		--link "https://github.com/GregTheGreek/trapps" \
+		build/appcast
+	@cp build/appcast/appcast.xml build/appcast.xml
+	@echo "Wrote build/appcast.xml; publish: gh release upload $(APPCAST_TAG) build/appcast.xml --clobber"
 
 reset-ax:
 	tccutil reset Accessibility com.gregthegreek.trapps
