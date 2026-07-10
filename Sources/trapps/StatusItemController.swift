@@ -6,6 +6,7 @@ import ServiceManagement
 final class StatusItemController: NSObject, NSMenuDelegate {
     private let statusItem: NSStatusItem
     private let scanner = MenuBarScanner()
+    private let updater = Updater()
     private var isMenuOpen = false
     private var hotKey: HotKey?
     // Written only during init (main actor) and read only in deinit, which runs
@@ -107,6 +108,23 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
 
         menu.addItem(.separator())
+
+        // Update controls are only shown when Sparkle is actually linked (the
+        // shipped Makefile build); the SwiftPM/bare-binary build has no updater.
+        if updater.isAvailable {
+            let check = NSMenuItem(title: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "")
+            check.target = self
+            check.isEnabled = updater.canCheckForUpdates
+            menu.addItem(check)
+
+            let auto = NSMenuItem(title: "Automatically check for updates", action: #selector(toggleAutoUpdate), keyEquivalent: "")
+            auto.target = self
+            auto.state = updater.automaticallyChecksForUpdates ? .on : .off
+            menu.addItem(auto)
+
+            menu.addItem(.separator())
+        }
+
         let launch = NSMenuItem(title: "Launch at Login", action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
         launch.target = self
         launch.state = SMAppService.mainApp.status == .enabled ? .on : .off
@@ -203,6 +221,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         } else {
             if !scanner.press(entry) { NSSound.beep() }
         }
+    }
+
+    @objc private func checkForUpdates() {
+        updater.checkForUpdates()
+    }
+
+    @objc private func toggleAutoUpdate() {
+        updater.automaticallyChecksForUpdates.toggle()
     }
 
     @objc private func toggleLaunchAtLogin() {

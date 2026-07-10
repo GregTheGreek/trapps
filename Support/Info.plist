@@ -28,5 +28,17 @@
 	<string>NSApplication</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
+	<!-- Sparkle auto-update. Feed is a small appcast.xml parked on a pinned
+	     GitHub release (stable URL, never re-tagged); enclosures point at each
+	     version's own release dmg. SUPublicEDKey is the EdDSA public key whose
+	     private half lives in the release machine's Keychain (make sparkle-keys). -->
+	<key>SUFeedURL</key>
+	<string>https://github.com/GregTheGreek/trapps/releases/download/appcast/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>rcaXLvn0CTQcpN4gWNQgi5zaa7OYkjXwTp+iUeES314=</string>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUScheduledCheckInterval</key>
+	<integer>86400</integer>
 </dict>
 </plist>

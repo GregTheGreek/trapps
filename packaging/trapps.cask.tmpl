@@ -9,6 +9,10 @@ cask "trapps" do
 
   depends_on macos: :ventura # macOS 13+ (bare symbol implies >=)
 
+  # Trapps updates itself via Sparkle; tell brew so `brew upgrade` defers to it
+  # rather than fighting the in-app updater.
+  auto_updates true
+
   app "Trapps.app"
 
   zap trash: [
