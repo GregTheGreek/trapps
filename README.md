@@ -8,7 +8,7 @@ A single macOS menu bar icon that reveals every menu bar item ("tray app") from 
 
 ## Install
 
-Download the latest `Trapps-x.y.z.zip` from [Releases](https://github.com/GregTheGreek/trapps/releases), unzip, and drag `Trapps.app` to `/Applications`. Releases are universal (Apple Silicon + Intel), Developer ID-signed, and notarized. Requires macOS 13+.
+Download the latest `Trapps-x.y.z.dmg` from [Releases](https://github.com/GregTheGreek/trapps/releases), open it, and drag `Trapps.app` to `/Applications`. Releases are universal (Apple Silicon + Intel), Developer ID-signed, and notarized. Requires macOS 13+.
 
 Or build from source - see below.
 
@@ -52,13 +52,13 @@ The Makefile signs with your Apple Development / Developer ID certificate if one
 Versioning is automated with [release-please](https://github.com/googleapis/release-please) (`.github/workflows/release-please.yml`); signing and notarization are done locally so the Developer ID private key never leaves the machine.
 
 1. Conventional commits merged to `main` accumulate into an auto-maintained release PR. Merging it bumps the version in `Support/Info.plist` (via the `x-release-please-version` markers) and `CHANGELOG.md`, tags `vX.Y.Z`, and publishes the GitHub release (without assets).
-2. Locally, on `main` at that tag, build the signed + notarized zip, attach it, then refresh the Sparkle appcast so existing installs see the update:
+2. Locally, on `main` at that tag, build the signed + notarized dmg, attach it (the exact versioned file, not a glob - a wildcard picks up stale artifacts from earlier builds), then refresh the Sparkle appcast so existing installs see the update:
 
    ```sh
    git pull
    V=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Support/Info.plist)
    make release && make notarize
-   gh release upload "v$V" "build/Trapps-$V.zip"
+   gh release upload "v$V" "build/Trapps-$V.dmg"
 
    make appcast                                   # writes build/appcast.xml (signed)
    gh release upload appcast build/appcast.xml --clobber

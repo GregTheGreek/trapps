@@ -2,7 +2,9 @@ APP     = build/Trapps.app
 BINARY  = build/trapps
 SOURCES = $(wildcard Sources/trapps/*.swift)
 VERSION = $(shell /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Support/Info.plist)
-ZIP     = build/Trapps-$(VERSION).zip
+DMG     = build/Trapps-$(VERSION).dmg
+DMG_STAGING = build/dmg
+VOLNAME = Trapps
 CASK_TMPL = packaging/trapps.cask.tmpl
 CASK     = build/trapps.rb
 MACOS_TARGET = apple-macos13.0
@@ -66,6 +68,18 @@ define SIGN_SPARKLE
 	codesign --force $(2) --sign "$(1)" "$$fw/Autoupdate"; \
 	codesign --force $(2) --sign "$(1)" "$$fw/Updater.app"; \
 	codesign --force $(2) --sign "$(1)" "$(APP)/Contents/Frameworks/Sparkle.framework"
+endef
+
+# Pack the signed .app into a compressed, read-only .dmg with a drag-to-Applications
+# shortcut. ditto (not cp) preserves the code signature. Removes any prior staging
+# dir and dmg first so nothing stale leaks in.
+define MAKE_DMG
+	rm -rf $(DMG_STAGING) "$(DMG)"
+	mkdir -p $(DMG_STAGING)
+	ditto $(APP) "$(DMG_STAGING)/Trapps.app"
+	ln -s /Applications "$(DMG_STAGING)/Applications"
+	hdiutil create -volname "$(VOLNAME)" -srcfolder $(DMG_STAGING) -ov -format UDZO "$(DMG)"
+	rm -rf $(DMG_STAGING)
 endef
 
 # Prefer a real signing identity so the Accessibility grant survives rebuilds;
@@ -137,7 +151,7 @@ run: bundle
 
 # --- Distribution ---
 # Universal binary, hardened runtime, Developer ID signature. `make release`
-# then `make notarize` produces a Gatekeeper-clean zip in build/.
+# then `make notarize` produces a Gatekeeper-clean dmg in build/.
 
 build/trapps-arm64: $(SOURCES) $(SPARKLE_FW)
 	mkdir -p build
@@ -152,7 +166,8 @@ release: build/trapps-arm64 build/trapps-x86_64 build/AppIcon.icns
 		echo "error: no 'Developer ID Application' identity in the keychain."; \
 		echo "Notarization requires one (Apple Developer Program membership)."; \
 		exit 1; }
-	rm -rf $(APP) $(ZIP)
+	rm -rf $(APP)
+	rm -f build/Trapps-*.zip build/Trapps-*.dmg
 	mkdir -p $(APP)/Contents/MacOS
 	lipo -create -output $(APP)/Contents/MacOS/trapps build/trapps-arm64 build/trapps-x86_64
 	cp Support/Info.plist $(APP)/Contents/Info.plist
@@ -160,21 +175,29 @@ release: build/trapps-arm64 build/trapps-x86_64 build/AppIcon.icns
 	$(EMBED_SPARKLE)
 	$(call SIGN_SPARKLE,$(RELEASE_IDENTITY),--options runtime --timestamp)
 	codesign --force --options runtime --timestamp --sign "$(RELEASE_IDENTITY)" $(APP)
-	ditto -c -k --keepParent $(APP) $(ZIP)
-	@echo "Built $(ZIP); next: make notarize"
+	$(MAKE_DMG)
+	@echo "Built $(DMG); next: make notarize"
 
+# A downloaded .dmg needs its own notarization ticket, and the app inside needs
+# one too for offline first launch - so we notarize twice: first the app (staple
+# it for offline Gatekeeper), then rebuild the dmg around the stapled app and
+# notarize + staple the dmg itself.
 notarize:
-	xcrun notarytool submit $(ZIP) $(NOTARY_AUTH) --wait
+	ditto -c -k --keepParent $(APP) build/notarize.zip
+	xcrun notarytool submit build/notarize.zip $(NOTARY_AUTH) --wait
+	rm -f build/notarize.zip
 	xcrun stapler staple $(APP)
-	ditto -c -k --keepParent $(APP) $(ZIP)
-	@echo "Notarized, stapled, and re-zipped $(ZIP)"
+	$(MAKE_DMG)
+	xcrun notarytool submit $(DMG) $(NOTARY_AUTH) --wait
+	xcrun stapler staple $(DMG)
+	@echo "Notarized + stapled app and dmg: $(DMG)"
 
 # Render the Homebrew cask from the template, filling in the current version and
-# the sha256 of the built zip. Run after `make release && make notarize`; the
+# the sha256 of the built dmg. Run after `make release && make notarize`; the
 # resulting build/trapps.rb goes into the homebrew-tap repo. See packaging/README.md.
 cask: $(CASK_TMPL)
-	@test -f $(ZIP) || { echo "error: $(ZIP) not found - run 'make release && make notarize' first."; exit 1; }
-	@sha=$$(shasum -a 256 $(ZIP) | awk '{print $$1}'); \
+	@test -f $(DMG) || { echo "error: $(DMG) not found - run 'make release && make notarize' first."; exit 1; }
+	@sha=$$(shasum -a 256 $(DMG) | awk '{print $$1}'); \
 	sed -e 's/@@VERSION@@/$(VERSION)/' -e "s/@@SHA256@@/$$sha/" $(CASK_TMPL) > $(CASK); \
 	echo "Rendered $(CASK) (version $(VERSION), sha256 $$sha)"
 
@@ -186,13 +209,13 @@ sparkle-keys: $(SPARKLE_FW)
 
 # Regenerate the appcast for the current version. Pulls the existing feed from the
 # pinned '$(APPCAST_TAG)' release, appends this version (enclosure -> this version's
-# release dmg/zip), signs everything with your Keychain EdDSA key, and writes
+# release dmg), signs everything with your Keychain EdDSA key, and writes
 # build/appcast.xml. Run after `make release && make notarize`, then publish with:
 #   gh release upload $(APPCAST_TAG) build/appcast.xml --clobber
 appcast: $(SPARKLE_FW)
-	@test -f $(ZIP) || { echo "error: $(ZIP) not found - run 'make release && make notarize' first."; exit 1; }
+	@test -f $(DMG) || { echo "error: $(DMG) not found - run 'make release && make notarize' first."; exit 1; }
 	@rm -rf build/appcast && mkdir -p build/appcast
-	@cp $(ZIP) build/appcast/
+	@cp $(DMG) build/appcast/
 	@curl -fsSL -o build/appcast/appcast.xml "$(APPCAST_URL)" \
 		&& echo "merged existing feed" || echo "no existing feed - starting fresh"
 	$(SPARKLE_BIN)/generate_appcast \
